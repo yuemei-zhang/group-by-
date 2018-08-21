@@ -1,2 +1,226 @@
 .sass-cache/
 *.css.map
+
+data pa_amount;
+data pa_data;
+set hive.tmp_zym_pa;
+if late_days>30 then target=1;else target=0;
+run;
+proc sort data=pa_data out=pa_data_1;by userid borrow_type;run;
+
+data pa_classifier;
+set pa_data_1(keep=userid borrow_type late_days  target org classifier_owner classifier_scene classifier_tool classifier_behavior classifier_business classifier_advert classifier_user);
+run;
+
+set pa_data_1(keep=userid borrow_type late_days  target loan_amount deposit_amount income_amount credit_limit overdue_day overdue_amount bill_amount payment_amount consume_amount);
+loan_amount_1=input(scan(compress(loan_amount,'['),1,','),8.);
+deposit_amount_1=input(scan(compress(deposit_amount,'['),1,','),8.);
+income_amount_1=input(scan(compress(income_amount,'['),1,','),8.);
+credit_limit_1=scan(compress(credit_limit,'['),1,',')+0;
+overdue_day_1=input(compress(overdue_day,'天'),8.);
+overdue_amountt_1=input(scan(compress(overdue_amount,'['),1,','),8.);
+bill_amount_1=input(scan(compress(bill_amount,'['),1,','),8.);
+payment_amount_1=input(scan(compress(payment_amount,'['),1,','),8.);
+consume_amount_1=input(scan(compress(consume_amount,'['),1,','),8.);
+drop loan_amount deposit_amount income_amount credit_limit overdue_day overdue_amount bill_amount payment_amount consume_amount;
+run;
+
+
+
+
+%MACRO  freq_var(InputVar_List= , table=, result=);
+%LET i =1;
+%DO %WHILE (%SCAN(&InputVar_List, &i) NE );
+     proc sql;
+	 create table freq&i  as
+	 select "%SCAN(&InputVar_List, &i)" as varname,%SCAN(&InputVar_List, &i) as varvalue ,borrow_type,sum(target) as late_cnt,count(userid) as total_cnt,sum(target)/count(userid) as dlp
+	 from pa_classifier
+	 group by %SCAN(&InputVar_List, &i),borrow_type;
+     
+   quit;
+%if &i=1 %then %do;
+  data &result;
+  set freq&i;
+  %end;
+
+%else %do;
+	proc append base=&result	data=freq&i force;
+	run;
+	proc delete data=freq&i;run;
+%end;
+%LET i = %EVAL(&i+ 1);	/*不调用这个函数将没有返回相加的值*/	
+%END;
+		
+
+%mend;
+proc contents data=pa_classifier out=conts;
+run;
+
+proc sql;
+select name into: InputVar_List separated by ' ' from conts where 
+name not in ('target','userid','borrow_type','late_days');
+quit;
+
+
+%freq_var(InputVar_List=&InputVar_List , table=pa_classifier, result=result);
+
+
+
+
+
+
+
+		data pa_classifier_1;
+		set pa_classifier(keep=userid borrow_type late_days  target classifier_business classifier_user);
+		run;
+		proc sql;
+		 create table pa_classifier_business as
+    select userid,borrow_type,classifier_business,count(*) as cnt
+    from pa_classifier
+    group by userid,borrow_type,classifier_business;
+quit;
+		proc sql;
+		 create table pa_classifier_business_1 as
+    select distinct a.*,b.late_days,b.target
+    from pa_classifier_business as a
+	left join pa_classifier as b
+	on a.userid=b.userid and a.borrow_type=b.borrow_type and a.classifier_business=b.classifier_business;
+quit;
+data pa_classifier_business_2;set pa_classifier_business_1;where borrow_type=8;run;
+proc sort data=pa_classifier_business_2;
+by userid classifier_business;
+run;
+
+proc format;
+value $vars
+"提现"=var1
+"保费"=var2
+"动账"=var3
+"出账"=var4
+"入账"=var5
+"额度"=var6
+"借款"=var7
+"借款提醒"=var8
+"未知"=var9
+"账单"=var10
+"充值"=var11
+"还款"=var12
+"已逾期"=var13
+"严重逾期"=var14
+"催收"=var15
+"还款提醒"=var16
+;
+
+data pa_classifier_business_3;
+set pa_classifier_business_2;
+classifier_business_1=put(classifier_business,vars.);
+run;
+
+proc transpose data=pa_classifier_business_3 out=transpose_data3;
+by userid target ;/*以此为转换依据*/
+id classifier_business_1;/*行转换为列*/
+var cnt  ;/*对应的数值*/
+run;
+
+/*classifier_user*/
+		proc sql;
+		 create table pa_classifier_user as
+    select userid,borrow_type,classifier_user,count(*) as cnt
+    from pa_classifier
+    group by userid,borrow_type,classifier_user;
+quit;
+		proc sql;
+		 create table pa_classifier_user_1 as
+    select distinct a.*,b.late_days,b.target
+    from pa_classifier_user as a
+	left join pa_classifier as b
+	on a.userid=b.userid and a.borrow_type=b.borrow_type and a.classifier_user=b.classifier_user;
+quit;
+data pa_classifier_user_2;set pa_classifier_user_1;where borrow_type=8;run;
+proc sort data=pa_classifier_user_2;
+by userid classifier_user;
+run;
+
+data pa_classifier_user_3;
+set pa_classifier_user_2;
+classifier_user_1=compress(classifier_user,,'p');
+drop classifier_user;
+run;
+
+
+proc sql;
+create table aa as 
+select distinct classifier_user_1
+from pa_classifier_user_3;
+quit;
+
+proc format;
+value $vars
+"催收"=var1
+"催收诈骗"=var2
+"未定义"=var3
+"严重逾期"=var4
+"已逾期"=var5
+"已逾期诈骗"=var6
+"逾期公布"=var7
+"诈骗"=var8;
+run;
+
+
+
+data pa_classifier_user_4;
+set pa_classifier_user_3;
+classifier_user=put(classifier_user_1,vars.);
+run;
+
+proc transpose data=pa_classifier_user_4 out=pa_classifier_user_5;
+by userid target ;
+id classifier_user;
+var cnt ;
+run;
+
+
+
+
+proc sql noprint;
+proc contents data=pa_classifier_user_5 out =cont_2;
+run;
+proc sql noprint;
+select compress(name) into : InputVar_List separated by ' ' from cont_2 where name not in ('userid','target','_NAME_');
+quit;
+
+%freq_var(InputVar_List=&InputVar_List , table=pa_classifier_user_5, result=result_2);
+
+
+
+/*data1单期*/
+%let Input_DSN=pa_classifier_user_5;							 	
+%let Target =target; 										
+%let Output_DSN_Detail =Output_DSN_Detail;				
+%let Output_DSN_Smry =Output_DSN_Smry;				
+%let Output_DSN_Sel_Detail=Output_DSN_Sel_Detail;
+%let Output_DSN_Sel_Smry =Output_DSN_Sel_Smry;			
+%let output_missing_var=output_missing_var;
+
+			
+
+%include "P:\policy_kyd\zhangyuemei\手机贷\三方征信源数据\通联\zhuhui_continuous_binning_chimerge.sas";
+
+%Num_Var_Binning
+		(	Input_DSN=&Input_DSN, 							 	/*input data set name*/
+			Target = &target , 										/*target binary variables*/
+			InputVar_List =&InputVar_List , 							/*input continuous variables list, separated by blanks*/			
+			Max_Missing_Portion = 0.6, 			/* how big of the  portiton of missing obs out of total obs is allowed; 0~1*/
+			Initial_Bin_Num = 20,						/*Inital bin number, recommeded:100 or 50 or 20 or 16 or 8*/
+			Inital_Bin_Method = 2, 					/* Equal Width(Bucket) or Equal Height(quantitle).  1: Equal Width; 2: Equal Height*/
+			Max_Bin_Num = 10, 							/*the maximum number of bins are allowed to form, 10~15*/
+			ChiSquare_Sign_Level =0.05 ,				/* signicance level for the independence chi-square test */
+			Info_Value_Threshold =0.02, 				/*  information threshould for variable selection */
+			Output_DSN_Detail =&Output_DSN_Detail,					/*Output dataset name, detailed info   */
+			Output_DSN_Smry =&Output_DSN_Smry,					/*Output dataset name, summary info  */
+			Output_DSN_Sel_Detail=&Output_DSN_Sel_Detail,
+			Output_DSN_Sel_Smry =&Output_DSN_Sel_Smry,				/*Output dataset name, summary info */
+			output_missing_var=&output_missing_var					/*Output missing_var */
+		);
+
+
