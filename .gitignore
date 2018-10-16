@@ -204,7 +204,7 @@ quit;
 
 			
 
-%include "P:\policy_kyd\zhangyuemei\手机贷\三方征信源数据\通联\zhuhui_continuous_binning_chimerge.sas";
+%include "continuous_binning_chimerge.sas";
 
 %Num_Var_Binning
 		(	Input_DSN=&Input_DSN, 							 	/*input data set name*/
